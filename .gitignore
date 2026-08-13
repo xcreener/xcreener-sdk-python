@@ -1,0 +1,46 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+
+# Packaging artefacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Lock files. This is a library, not an application: pinning transitive
+# dependencies here would impose them on everyone who installs the package.
+poetry.lock
+uv.lock
+
+# Test, type and lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Secrets. The client reads $XCREENER_API_KEY, so any .env in this tree is a
+# live credential. Matched broadly, with the checked-in template exempted.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
