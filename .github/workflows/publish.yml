@@ -1,0 +1,94 @@
+name: Publish
+
+# Tag push -> PyPI. Manual run from the Actions tab -> TestPyPI only, which is
+# the rehearsal path: it can never reach the real index.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build twine
+
+      # The tag is the only thing a human types during a release, so it is the
+      # only thing that can disagree with the source. Fail before building.
+      - name: Check the tag matches __version__
+        if: github.event_name == 'push'
+        run: |
+          version=$(python - <<'PY'
+          import pathlib, re
+          text = pathlib.Path("src/xcreener/_version.py").read_text()
+          print(re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', text).group(1))
+          PY
+          )
+          tag="${GITHUB_REF_NAME#v}"
+          echo "tag=$tag __version__=$version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match __version__ $version"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check the metadata renders
+        run: python -m twine check --strict dist/*
+
+      # Proves the wheel imports somewhere that is not the source tree, so a
+      # missing package file fails here rather than for the first user.
+      - name: Install the wheel into a clean environment
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/python -m pip install --quiet dist/*.whl
+          cd /tmp
+          /tmp/smoke/bin/python -c "import xcreener; print('imported', xcreener.__version__)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    # The rehearsal. Manual runs stop here.
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write # trusted publishing; no API token exists to leak
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    # Only a tag push reaches the real index, and only after build passed.
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
