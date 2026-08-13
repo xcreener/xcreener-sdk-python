@@ -23,6 +23,7 @@ from .models import (
     Quota,
     RateLimit,
     ResultSet,
+    SupportsXQL,
     ValidationResult,
     XQLErrorDetail,
 )
@@ -42,7 +43,7 @@ ApiKeyLike = Union[str, Callable[[], str]]
 #: A query is either raw XQL text, or any object that renders itself to XQL.
 #: The second case is what a future expression/builder layer plugs into: it
 #: only has to grow a ``to_xql()`` method, and this client keeps working.
-QueryLike = Union[str, Any]
+QueryLike = Union[str, SupportsXQL]
 
 
 def _normalize_api_key(value: str) -> str:
@@ -104,9 +105,11 @@ class Xcreener:
         Falls back to ``$XCREENER_API_KEY``. Nothing is written to disk: where
         the key lives is your call, not this library's.
     :param base_url: Override for testing or a self-hosted proxy.
-    :param timeout: Per-request timeout in seconds.
+    :param timeout: Per-request timeout in seconds. Ignored when ``transport``
+        is supplied, since that client carries its own.
     :param max_retries: Retries for 5xx and transport failures only. Never for
-        400, 401 or 429, which will not change on a retry.
+        400, 401 or 429, which will not change on a retry. Zero disables
+        retrying; negative is rejected.
     :param precheck: Default for :meth:`run`. When true, every run is preceded
         by a free ``validate`` call so a malformed query raises before any
         quota is spent. Costs a round trip, spends nothing.
@@ -123,6 +126,11 @@ class Xcreener:
         precheck: bool = False,
         transport: Optional[httpx.Client] = None,
     ) -> None:
+        if max_retries < 0:
+            # Left unchecked this skips the request loop entirely and surfaces
+            # as a TransportError with no underlying cause, which reads like a
+            # network fault rather than a typo.
+            raise ValueError(f"max_retries must be >= 0, got {max_retries}")
         if callable(api_key):
             # Resolved per request, so a rotated key is picked up without
             # rebuilding the client. Deliberately not called here: a provider
@@ -378,10 +386,14 @@ class Xcreener:
             )
 
         if status == 429:
-            limit = self._rate_limit
+            # From this response, not from the last run: a 429 raised by
+            # usage() or validate() would otherwise report a reset time
+            # scraped from an unrelated earlier call, or none at all.
+            limit = RateLimit.from_headers(response.headers) or self._rate_limit
             raise QuotaExceeded(
                 self._error_message(response, "Daily API rate limit exceeded"),
                 status_code=429,
+                limit=limit.limit if limit else None,
                 reset_at=limit.reset_at if limit else None,
             )
 

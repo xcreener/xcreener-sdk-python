@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "xcreener"
+dynamic = ["version"]
+description = "Python client for the XCREENER XQL HTTP API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Andrew Magnaye" }]
+keywords = ["xcreener", "xql", "trading", "screener", "market-data"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = ["httpx>=0.24"]
+
+[project.optional-dependencies]
+pandas = ["pandas>=1.5"]
+dev = ["pytest>=7", "pytest-httpx", "mypy", "ruff"]
+
+[project.urls]
+Homepage = "https://xcreener.com"
+Documentation = "https://xcreener.com/docs/xql/api"
+Developers = "https://xcreener.com/developers"
+Issues = "https://github.com/xcreener/xcreener-sdk-python/issues"
+
+[tool.hatch.version]
+path = "src/xcreener/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xcreener"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+# Explicit, so a contributor's ambient ruff config cannot change what CI
+# enforces. Pyupgrade is deliberately absent: this package supports 3.9, and
+# `Optional[X]` / `List[X]` are unambiguous on every version we ship for.
+select = ["E", "W", "F", "I", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+# pandas is an optional extra and ships no stubs we depend on.
+module = "pandas.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

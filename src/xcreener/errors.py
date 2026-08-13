@@ -51,6 +51,10 @@ class QuotaExceeded(XcreenerError):
     ``validate`` and ``explain`` keep working: they are never metered. So a
     reasonable reaction to this is to keep iterating on the query for free and
     schedule the run for after :attr:`reset_at`.
+
+    :attr:`reset_at` and :attr:`limit` come from the rate-limit headers on the
+    429 itself, so they describe the response you just got. Both are ``None``
+    if the server did not send those headers.
     """
 
     def __init__(
@@ -58,12 +62,10 @@ class QuotaExceeded(XcreenerError):
         message: str,
         *,
         status_code: Optional[int] = None,
-        tier: Optional[str] = None,
         limit: Optional[int] = None,
         reset_at: Optional[datetime] = None,
     ) -> None:
         super().__init__(message, status_code=status_code)
-        self.tier = tier
         self.limit = limit
         self.reset_at = reset_at
 

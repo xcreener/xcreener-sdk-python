@@ -9,11 +9,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Union,
+    overload,
+)
 
 from .errors import XQLError, XQLPlanError, XQLSyntaxError
 
 __all__ = [
+    "SupportsXQL",
     "Position",
     "XQLErrorDetail",
     "ValidationResult",
@@ -25,6 +37,18 @@ __all__ = [
     "Quota",
     "RateLimit",
 ]
+
+
+class SupportsXQL(Protocol):
+    """Anything that renders itself to XQL text.
+
+    Structural, so a future expression or builder layer satisfies it just by
+    growing a ``to_xql()`` method: it never has to import or subclass anything
+    from here. Spelling it as a protocol rather than ``Any`` is what lets a
+    caller's type checker reject a plain ``int`` at the call site.
+    """
+
+    def to_xql(self) -> str: ...
 
 
 def _parse_timestamp(value: Any) -> Optional[datetime]:
@@ -126,10 +150,21 @@ class ValidationResult:
         return self.error.message if self.error else None
 
     def raise_for_error(self) -> "ValidationResult":
-        """Raise the matching :class:`XQLError` if invalid, else return self."""
-        if not self.valid and self.error is not None:
+        """Raise the matching :class:`XQLError` if invalid, else return self.
+
+        An invalid result always raises, even when the API supplied no error
+        object to build a specific exception from. Returning quietly here would
+        let ``run(precheck=True)`` spend the metered call it exists to save.
+        """
+        if self.valid:
+            return self
+        if self.error is not None:
             raise self.error.to_exception(self.query)
-        return self
+        raise XQLError(
+            "Query reported invalid, but the API returned no error detail.",
+            query=self.query,
+            status_code=400,
+        )
 
 
 @dataclass(frozen=True)
@@ -203,7 +238,7 @@ class Explanation:
 
 #: Anything usable as a column key: the literal string the API returns, or a
 #: future expression object that renders to it.
-ColumnKey = Union[str, Any]
+ColumnKey = Union[str, SupportsXQL]
 
 
 def _column_key(key: ColumnKey) -> str:
@@ -284,7 +319,15 @@ class ResultSet(Sequence[Match]):
     def __len__(self) -> int:
         return len(self._matches)
 
-    def __getitem__(self, index: Union[int, slice]) -> Any:
+    # Overloaded so an index gives back a Match and a slice gives back another
+    # ResultSet, rather than collapsing both to Any at the call site.
+    @overload
+    def __getitem__(self, index: int) -> Match: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> "ResultSet": ...
+
+    def __getitem__(self, index: Union[int, slice]) -> Union[Match, "ResultSet"]:
         if isinstance(index, slice):
             return ResultSet(self._matches[index], raw=self.raw)
         return self._matches[index]
@@ -321,7 +364,11 @@ class ResultSet(Sequence[Match]):
                 "to_pandas() needs pandas: pip install 'xcreener[pandas]'"
             ) from exc
         frame = pd.DataFrame(self.to_dicts())
-        return frame.set_index("symbol") if not frame.empty else frame
+        if frame.empty:
+            # An empty result still has to come back shaped like a result, or
+            # callers have to special-case "no matches" before every access.
+            frame = pd.DataFrame(columns=["symbol", *self.column_names])
+        return frame.set_index("symbol")
 
 
 @dataclass(frozen=True)
@@ -364,17 +411,25 @@ class RateLimit:
 
     remaining: Optional[int] = None
     reset_at: Optional[datetime] = None
+    limit: Optional[int] = None
 
     @classmethod
     def from_headers(cls, headers: Mapping[str, str]) -> Optional["RateLimit"]:
         lookup = {k.lower(): v for k, v in headers.items()}
         remaining = lookup.get("x-ratelimit-remaining")
         reset = lookup.get("x-ratelimit-reset")
-        if remaining is None and reset is None:
+        limit = lookup.get("x-ratelimit-limit")
+        if remaining is None and reset is None and limit is None:
             return None
-        parsed_remaining: Optional[int]
-        try:
-            parsed_remaining = int(remaining) if remaining is not None else None
-        except ValueError:
-            parsed_remaining = None
-        return cls(remaining=parsed_remaining, reset_at=_parse_timestamp(reset))
+
+        def _int(value: Optional[str]) -> Optional[int]:
+            try:
+                return int(value) if value is not None else None
+            except ValueError:
+                return None
+
+        return cls(
+            remaining=_int(remaining),
+            reset_at=_parse_timestamp(reset),
+            limit=_int(limit),
+        )

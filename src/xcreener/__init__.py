@@ -38,6 +38,7 @@ from .models import (
     RateLimit,
     ResultSet,
     Source,
+    SupportsXQL,
     ValidationResult,
     XQLErrorDetail,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "UpstreamError",
     "TransportError",
     # models
+    "SupportsXQL",
     "ValidationResult",
     "XQLErrorDetail",
     "Position",
