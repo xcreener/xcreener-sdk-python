@@ -1,13 +1,5 @@
 # Changelog
 
-Notable changes to this package, newest first. Versions follow
-[semantic versioning](https://semver.org/spec/v2.0.0.html): while the major is
-`0`, a minor bump is where a breaking change is allowed to land.
-
-The scope here is the *client library*, not the XQL language or the API behind
-it. A server-side change earns an entry only when it changes something this
-package exposes.
-
 ## 0.1.0 — 2026-08-17
 
 First public release.
