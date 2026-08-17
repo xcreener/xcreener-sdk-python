@@ -33,6 +33,8 @@ dev = ["pytest>=7", "pytest-httpx", "mypy", "ruff"]
 Homepage = "https://xcreener.com"
 Documentation = "https://xcreener.com/docs/xql/api"
 Developers = "https://xcreener.com/developers"
+Repository = "https://github.com/xcreener/xcreener-sdk-python"
+Changelog = "https://github.com/xcreener/xcreener-sdk-python/blob/main/CHANGELOG.md"
 Issues = "https://github.com/xcreener/xcreener-sdk-python/issues"
 
 [tool.hatch.version]
